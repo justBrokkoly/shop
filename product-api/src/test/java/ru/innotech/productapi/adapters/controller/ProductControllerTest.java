@@ -109,7 +109,7 @@ class ProductControllerTest extends AbstractIntegrationTest {
         Product product2 = ProductTestUtil.product1Mock();
         productRepository.save(product1);
         productRepository.save(product2);
-        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/api/v1/discounts"))
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/discount/api/v1/discounts"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
