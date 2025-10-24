@@ -6,5 +6,6 @@ include 'order-api'
 include 'order-orchestrator'
 include 'payment-api'
 include 'inventory-api'
+include 'discount-api'
 
 rootProject.name = 'shop'

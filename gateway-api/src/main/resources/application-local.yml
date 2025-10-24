@@ -32,6 +32,24 @@ spring:
                       firstBackoff: 10ms
                       maxBackoff: 50ms
                       factor: 2
+            - id: discount-api
+              uri: http://localhost:8086
+              predicates:
+                - Path=/discount/**
+              metadata:
+                response-timeout: 500
+                connect-timeout: 200
+              filters:
+                - StripPrefix=1
+                - name: Retry
+                  args:
+                    retries: 3
+                    statuses: BAD_GATEWAY
+                    methods: GET,POST
+                    backoff:
+                      firstBackoff: 10ms
+                      maxBackoff: 50ms
+                      factor: 2
           globalcors:
             cors-configurations:
               '[/**]':
