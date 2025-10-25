@@ -1,6 +1,10 @@
 package ru.innotech.productapi.adapters.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -23,7 +27,7 @@ import ru.innotech.productapi.adapters.repository.ProductRepository;
         port = 0
 )
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.cloud.openfeign.client.config.gateway-api.url=http://localhost:${wiremock.server.port}"})
+        properties = {"spring.cloud.openfeign.client.config.discount-api.url=http://localhost:${wiremock.server.port}"})
 @ActiveProfiles("test")
 @ContextConfiguration(classes = {ProductApiApplication.class})
 public abstract class AbstractIntegrationTest {
@@ -36,6 +40,11 @@ public abstract class AbstractIntegrationTest {
 
     @Autowired
     protected ObjectMapper objectMapper;
+
+    @Autowired
+    protected CircuitBreakerRegistry circuitBreakerRegistry;
+    @Autowired
+    protected BulkheadRegistry bulkheadRegistry;
 
     @Container
     public static PostgreSQLContainer<?> POSTGRES_CONTAINER = new PostgreSQLContainer<>("postgres:12.3")
@@ -53,6 +62,10 @@ public abstract class AbstractIntegrationTest {
 
     @BeforeEach
     public void init() {
+        Bulkhead bulkhead = bulkheadRegistry.bulkhead("myServiceClient");
+        bulkhead.releasePermission();
+        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("getDiscountsCircuitBreaker");
+        circuitBreaker.reset();
         productRepository.deleteAll();
     }
 }

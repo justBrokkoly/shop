@@ -1,8 +1,6 @@
 package ru.innotech.productapi.adapters.controller;
 
 import com.github.tomakehurst.wiremock.client.WireMock;
-import java.math.BigDecimal;
-import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -13,6 +11,8 @@ import ru.innotech.productapi.adapters.controller.dto.request.ProductRequest;
 import ru.innotech.productapi.adapters.controller.dto.response.ProductResponse;
 import ru.innotech.productapi.core.model.Product;
 
+import java.math.BigDecimal;
+import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static org.hamcrest.Matchers.hasSize;
@@ -109,7 +109,7 @@ class ProductControllerTest extends AbstractIntegrationTest {
         Product product2 = ProductTestUtil.product1Mock();
         productRepository.save(product1);
         productRepository.save(product2);
-        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/discount/api/v1/discounts"))
+        WireMock.stubFor(WireMock.get(WireMock.urlPathEqualTo("/api/v1/discounts"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
