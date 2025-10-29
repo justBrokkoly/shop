@@ -12,8 +12,48 @@ spring:
     enabled: false
     uri: http://localhost:0
     import: "optional:configserver:"
-
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 10000
+        loggerLevel: full
+      discount-api:
+        connectTimeout: 5000
+        readTimeout: 10000
+        loggerLevel: full
 resilience4j:
+  retry:
+    configs:
+      default:
+        registerHealthIndicator: true
+        maxAttempts: 3
+        waitDuration: 2s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2.0
+    instances:
+      getDiscountsRetry:
+        baseConfig: default
+        ignoreExceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  circuitbreaker:
+    instances:
+      getDiscountsCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 5
+        minimum-number-of-calls: 3
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        wait-duration-in-open-state: 2s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 1s
+  bulkhead:
+    instances:
+      getDiscountsBulkhead:
+        maxConcurrentCalls: 3
+        maxWaitDuration: 500
   ratelimiter:
     instances:
       getProductLimiter:
