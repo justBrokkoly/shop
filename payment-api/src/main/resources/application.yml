@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: payment-api
+outbox:
+  repeatEvery: PT1S
+  attemptFrequency: PT0.5S
+  blockAfterAttempts: 100
+  useJackson: true
