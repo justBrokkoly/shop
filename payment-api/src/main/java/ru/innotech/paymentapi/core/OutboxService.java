@@ -1,4 +1,4 @@
-package ru.innotech.orderapi.core.service;
+package ru.innotech.paymentapi.core;
 
 import com.gruelbox.transactionoutbox.TransactionOutbox;
 import lombok.RequiredArgsConstructor;

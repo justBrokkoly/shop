@@ -1,69 +1,98 @@
 package ru.innotech.orderapi.adapters.kafka;
 
-import java.util.List;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gruelbox.transactionoutbox.TransactionOutbox;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import ru.innotech.orderapi.adapters.repository.EventStoreRepository;
 import ru.innotech.orderapi.adapters.repository.OrderRepository;
-import ru.innotech.orderapi.core.model.Event;
 import ru.innotech.orderapi.core.model.Order;
-import ru.innotech.orderapi.core.model.OrderStatusChangedEvent;
-import ru.innotech.orderapi.core.service.OutboxService;
+import ru.innotech.orderapi.core.model.shared.MessageEnvelope;
+import ru.innotech.orderapi.core.model.shared.OrderEvent;
+import ru.innotech.orderapi.core.model.shared.ReserveStockCommandPayload;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.UUID;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class EventConsumer {
 
-    private final EventStoreRepository eventStoreRepository;
     private final OrderRepository orderRepository;
-    private final OutboxService outboxService;
+    private final ObjectMapper mapper;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final TransactionOutbox transactionOutbox;
+
+    @Value("${topics.order.topic}")
+    private String orderTopic;
 
     @Transactional
-    @KafkaListener(topics = "${topics.orders.input}")
-    public void consumeEvent(ConsumerRecord<String, Event> eventRecord) {
-        Event event = eventRecord.value();
+    @KafkaListener(topics = "${topics.payment.topic}")
+    public void consumePaymentEvent(String raw) throws IOException {
+        log.info("Message {} was received", raw);
+        JsonNode node = mapper.readTree(raw);
+        String type = node.get("type").asText();
+        JsonNode payload = node.get("payload");
+        String orderId = payload.get("orderId").asText();
+        if ("PaymentAuthorizedEvent".equals(type)) {
+            Order order = orderRepository.findByOrderId(orderId);
+            order.setStatus("PaymentProcessed");
 
-        eventStoreRepository.save(event);
-
-        Order order = getOrderFromEvents(event.getOrderId());
-        order.applyEvent(event);
-
-        handleEvent(event, order);
-    }
-
-    private Order getOrderFromEvents(String orderId) {
-        List<Event> events = eventStoreRepository.findByOrderId(orderId);
-
-        Order order = new Order(orderId);
-        order.replayEvents(events);
-        return order;
-    }
-
-    private void handleEvent(Event event, Order order) {
-        if (event instanceof OrderStatusChangedEvent statusChangedEvent) {
-            if (isPaymentPending(statusChangedEvent)) {
-                outboxService.enqueueOrder(order);
-            }
-            if (isCancelled(statusChangedEvent) || isConfirmed(statusChangedEvent)) {
-                orderRepository.save(order);
-            }
+            MessageEnvelope<ReserveStockCommandPayload> evt = MessageEnvelope.<ReserveStockCommandPayload>builder()
+                    .messageId(UUID.randomUUID().toString())
+                    .orderId(orderId)
+                    .type("ReserveStock")
+                    .timestamp(Instant.now())
+                    .payload(new ReserveStockCommandPayload(orderId, order.getItems()))
+                    .build();
+            transactionOutbox.schedule(getClass()).sendEvent(orderId, evt);
+        }
+        if ("PaymentCancelledEvent".equals(type)) {
+            Order order = orderRepository.findByOrderId(orderId);
+            order.setStatus("PaymentCancelled");
+        }
+        if ("PaymentFailedEvent".equals(type)) {
+            Order order = orderRepository.findByOrderId(orderId);
+            order.setStatus("PaymentFailed");
         }
     }
 
-    private boolean isPaymentPending(OrderStatusChangedEvent event) {
-        return event.getStatus().equals("PAYMENT_PENDING");
+
+    @Transactional
+    @KafkaListener(topics = "${topics.inventory.topic}")
+    public void consumeInventoryEvent(String raw) throws IOException {
+        log.info("Message {} was received", raw);
+        JsonNode node = mapper.readTree(raw);
+        String type = node.get("type").asText();
+        JsonNode payload = node.get("payload");
+        String orderId = payload.get("orderId").asText();
+        if ("StockReservedEvent".equals(type)) {
+            Order order = orderRepository.findByOrderId(orderId);
+            order.setStatus("OrderCompleted");
+        }
+        if ("StockReservationFailedEvent".equals(type)) {
+            Order order = orderRepository.findByOrderId(orderId);
+            order.setStatus("StockReservationFailed");
+            MessageEnvelope<OrderEvent> evt = MessageEnvelope.<OrderEvent>builder()
+                    .messageId(UUID.randomUUID().toString())
+                    .orderId(orderId)
+                    .type("OrderCancelled")
+                    .timestamp(Instant.now())
+                    .payload(new OrderEvent(orderId, "OrderCancelled"))
+                    .build();
+            transactionOutbox.schedule(getClass()).sendEvent(orderId, evt);
+        }
     }
 
-    private boolean isConfirmed(OrderStatusChangedEvent event) {
-        return event.getStatus().equals("CONFIRMED");
-    }
-
-    private boolean isCancelled(OrderStatusChangedEvent event) {
-        return event.getStatus().equals("CANCELLED");
+    <T> void sendEvent(String orderId,MessageEnvelope<T> event ) throws IOException {
+        kafkaTemplate.send(orderTopic, orderId, mapper.writeValueAsString(event));
+        log.info("Message {} was sent", mapper.writeValueAsString(event));
     }
 }
